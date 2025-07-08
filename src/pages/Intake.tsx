@@ -8,12 +8,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Progress } from "@/components/ui/progress";
 import { ArrowLeft, User, BookOpen, Award, Target, Brain, ChevronRight } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import { submitIntakeData, IntakeFormData } from "@/services/intakeService";
 
 const Intake = () => {
   const navigate = useNavigate();
+  const { user, loading } = useAuth();
+  const { toast } = useToast();
   
   const [currentStep, setCurrentStep] = useState(1);
-  const [formData, setFormData] = useState({
+  const [submitting, setSubmitting] = useState(false);
+  const [formData, setFormData] = useState<IntakeFormData>({
     // Personal Info
     fullName: '',
     email: '',
@@ -46,12 +52,59 @@ const Intake = () => {
   const totalSteps = 4;
   const progress = (currentStep / totalSteps) * 100;
 
-  const handleNext = () => {
+  useEffect(() => {
+    if (!loading && !user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please sign up or log in to complete your profile intake.",
+        variant: "destructive",
+      });
+      navigate('/');
+    }
+  }, [user, loading, navigate, toast]);
+
+  const handleNext = async () => {
     if (currentStep < totalSteps) {
       setCurrentStep(currentStep + 1);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else {
-      navigate('/analysis', { state: { studentData: formData } });
+      await handleSubmit();
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!user) {
+      toast({
+        title: "Error",
+        description: "User not authenticated",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSubmitting(true);
+    
+    try {
+      const result = await submitIntakeData(formData, user.id);
+      
+      if (result.success) {
+        toast({
+          title: "Profile Created Successfully! 🎉",
+          description: "Your career profile has been saved. Zane AI is now analyzing your data...",
+        });
+        navigate('/analysis', { state: { studentData: formData, profileId: result.profileId } });
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      console.error('Submission error:', error);
+      toast({
+        title: "Submission Error",
+        description: error.message || "Failed to save your profile. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -80,6 +133,19 @@ const Intake = () => {
         return null;
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
+        <div className="text-center">
+          <Brain className="w-12 h-12 animate-spin text-navy-600 mx-auto mb-4" />
+          <p className="text-slate-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) return null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
@@ -159,9 +225,15 @@ const Intake = () => {
                 </Button>
                 <Button 
                   onClick={handleNext}
+                  disabled={submitting}
                   className="bg-gradient-to-r from-navy-600 to-autumn-500 hover:from-navy-700 hover:to-autumn-600 text-white px-8 py-2 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
                 >
-                  {currentStep === totalSteps ? (
+                  {submitting ? (
+                    <>
+                      <Brain className="w-4 h-4 mr-2 animate-spin" />
+                      Saving Profile...
+                    </>
+                  ) : currentStep === totalSteps ? (
                     <>
                       Analyze My Profile 
                       <Brain className="w-4 h-4 ml-2" />

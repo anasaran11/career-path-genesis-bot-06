@@ -20,33 +20,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [userProfile, setUserProfile] = useState<any | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
   useEffect(() => {
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('Auth state changed:', event, session?.user?.id);
         setSession(session);
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          // Try to fetch user profile only if logged in
-          // This will be commented out until we create the profiles table
-          /*
+          // Fetch user profile with the new schema
           setTimeout(async () => {
             try {
-              const { data: profile } = await supabase
+              const { data: profile, error } = await supabase
                 .from('profiles')
-                .select('*, student_profiles(*)')
-                .eq('id', session.user.id)
+                .select('*')
+                .eq('user_id', session.user.id)
                 .single();
-              setUserProfile(profile);
+              
+              if (error) {
+                console.error('Error fetching profile:', error);
+              } else {
+                setUserProfile(profile);
+              }
             } catch (error) {
               console.error('Error fetching profile:', error);
             }
           }, 0);
-          */
         } else {
           setUserProfile(null);
         }
@@ -57,6 +60,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('Initial session:', session?.user?.id);
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
