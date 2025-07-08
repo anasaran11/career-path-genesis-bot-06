@@ -214,6 +214,22 @@ export const submitIntakeData = async (formData: IntakeFormData, userId: string)
       console.log('Job preferences saved successfully');
     }
 
+    // 7. Trigger AI analysis
+    console.log('Triggering AI analysis for profile:', userId);
+    try {
+      const { data: analysisResult, error: analysisError } = await supabase.functions.invoke('analyzeProfile', {
+        body: { profile_id: userId }
+      });
+
+      if (analysisError) {
+        console.error('Analysis error:', analysisError);
+      } else {
+        console.log('Analysis completed successfully:', analysisResult);
+      }
+    } catch (error) {
+      console.error('Failed to trigger analysis:', error);
+    }
+
     console.log('Intake data submission completed successfully');
     return { success: true, profileId: profile.id };
 

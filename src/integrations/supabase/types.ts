@@ -170,6 +170,44 @@ export type Database = {
           },
         ]
       }
+      credit_usage: {
+        Row: {
+          action_type: string
+          created_at: string | null
+          credits_added: number | null
+          credits_consumed: number | null
+          id: string
+          profile_id: string
+          remaining_credits: number
+        }
+        Insert: {
+          action_type: string
+          created_at?: string | null
+          credits_added?: number | null
+          credits_consumed?: number | null
+          id?: string
+          profile_id: string
+          remaining_credits: number
+        }
+        Update: {
+          action_type?: string
+          created_at?: string | null
+          credits_added?: number | null
+          credits_consumed?: number | null
+          id?: string
+          profile_id?: string
+          remaining_credits?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_usage_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       educations: {
         Row: {
           created_at: string | null
@@ -248,6 +286,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      institutions: {
+        Row: {
+          approved: boolean | null
+          created_at: string | null
+          domain: string
+          id: string
+          name: string
+        }
+        Insert: {
+          approved?: boolean | null
+          created_at?: string | null
+          domain: string
+          id?: string
+          name: string
+        }
+        Update: {
+          approved?: boolean | null
+          created_at?: string | null
+          domain?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
       }
       job_prefs: {
         Row: {
@@ -381,34 +443,60 @@ export type Database = {
         Row: {
           city: string | null
           created_at: string | null
+          credits: number | null
           email: string | null
+          first_login: boolean | null
           id: string
+          institution_id: string | null
+          last_login: string | null
           mobile: string | null
           name: string | null
+          password_hash: string | null
           updated_at: string | null
           user_id: string
+          username: string | null
         }
         Insert: {
           city?: string | null
           created_at?: string | null
+          credits?: number | null
           email?: string | null
+          first_login?: boolean | null
           id?: string
+          institution_id?: string | null
+          last_login?: string | null
           mobile?: string | null
           name?: string | null
+          password_hash?: string | null
           updated_at?: string | null
           user_id: string
+          username?: string | null
         }
         Update: {
           city?: string | null
           created_at?: string | null
+          credits?: number | null
           email?: string | null
+          first_login?: boolean | null
           id?: string
+          institution_id?: string | null
+          last_login?: string | null
           mobile?: string | null
           name?: string | null
+          password_hash?: string | null
           updated_at?: string | null
           user_id?: string
+          username?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_institution_id_fkey"
+            columns: ["institution_id"]
+            isOneToOne: false
+            referencedRelation: "institutions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       skill_gaps: {
         Row: {
@@ -457,11 +545,58 @@ export type Database = {
         }
         Relationships: []
       }
+      zane_courses: {
+        Row: {
+          active: boolean | null
+          course_id: string
+          created_at: string | null
+          duration: string | null
+          id: string
+          key_skills: string[] | null
+          level: string | null
+          price: number | null
+          summary: string | null
+          title: string
+        }
+        Insert: {
+          active?: boolean | null
+          course_id: string
+          created_at?: string | null
+          duration?: string | null
+          id?: string
+          key_skills?: string[] | null
+          level?: string | null
+          price?: number | null
+          summary?: string | null
+          title: string
+        }
+        Update: {
+          active?: boolean | null
+          course_id?: string
+          created_at?: string | null
+          duration?: string | null
+          id?: string
+          key_skills?: string[] | null
+          level?: string | null
+          price?: number | null
+          summary?: string | null
+          title?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      add_credits: {
+        Args: { user_profile_id: string; credits_to_add: number }
+        Returns: Json
+      }
+      consume_credit: {
+        Args: { user_profile_id: string }
+        Returns: Json
+      }
       get_full_profile: {
         Args: { uid: string }
         Returns: Json
