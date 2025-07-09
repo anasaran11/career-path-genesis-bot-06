@@ -17,6 +17,7 @@ import {
   getCachedAnalysisResults,
   CareerRecommendation,
 } from "@/services/studentAnalysisService";
+import ProfileUpdateModal from "@/components/ProfileUpdateModal";
 import {
   TrendingUp,
   Target,
@@ -29,6 +30,8 @@ import {
   Brain,
   FileText,
   Sparkles,
+  Settings,
+  User,
 } from "lucide-react";
 
 const Analysis = () => {
@@ -40,6 +43,7 @@ const Analysis = () => {
   const [skillGaps, setSkillGaps] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [jobScanLoading, setJobScanLoading] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   useEffect(() => {
     if (student) {
@@ -143,6 +147,11 @@ const Analysis = () => {
     await loadAnalysisData();
   };
 
+  const handleProfileUpdate = () => {
+    // Re-run analysis after profile update
+    handleRefreshAnalysis();
+  };
+
   const renderJobScanButton = () => {
     const hasSkillGaps = skillGaps.length > 0;
     const hasCredits = student?.credits > 0;
@@ -235,16 +244,52 @@ const Analysis = () => {
           Based on your profile, we've identified the best career opportunities
           and created a personalized roadmap for your success.
         </p>
-        <Button
-          onClick={handleRefreshAnalysis}
-          variant="outline"
-          size="sm"
-          className="mt-4"
-        >
-          <Sparkles className="mr-2 h-4 w-4" />
-          Refresh Analysis
-        </Button>
+        <div className="flex justify-center space-x-3">
+          <Button onClick={handleRefreshAnalysis} variant="outline" size="sm">
+            <Sparkles className="mr-2 h-4 w-4" />
+            Refresh Analysis
+          </Button>
+          <Button
+            onClick={() => setShowProfileModal(true)}
+            variant="outline"
+            size="sm"
+            className="bg-gradient-to-r from-green-50 to-blue-50 border-green-200 text-green-700 hover:bg-green-100"
+          >
+            <Settings className="mr-2 h-4 w-4" />
+            Update Profile
+          </Button>
+        </div>
       </div>
+
+      {/* Profile Summary Card */}
+      {student && (
+        <Card className="bg-gradient-to-r from-navy-50 to-autumn-50 border-navy-200">
+          <CardContent className="p-6">
+            <div className="flex items-center space-x-4">
+              <div className="w-12 h-12 bg-gradient-to-r from-navy-600 to-autumn-500 rounded-xl flex items-center justify-center">
+                <User className="w-6 h-6 text-white" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-navy-800">
+                  {student.full_name}
+                </h3>
+                <p className="text-slate-600">
+                  {student.email} • {student.institution}
+                </p>
+              </div>
+              <Button
+                onClick={() => setShowProfileModal(true)}
+                variant="outline"
+                size="sm"
+                className="bg-white border-navy-200 text-navy-700 hover:bg-navy-50"
+              >
+                <Settings className="w-4 h-4 mr-2" />
+                Edit Profile
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Skill Gaps Alert */}
       {skillGaps.length > 0 && (
@@ -436,6 +481,13 @@ const Analysis = () => {
           </CardContent>
         </Card>
       )}
+
+      {/* Profile Update Modal */}
+      <ProfileUpdateModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        onUpdate={handleProfileUpdate}
+      />
     </div>
   );
 };
