@@ -48,6 +48,13 @@ export interface Course {
   provider?: string;
 }
 
+// Type for the consume_credit function response
+interface CreditResponse {
+  success?: boolean;
+  remaining_credits?: number;
+  error?: string;
+}
+
 export const getAnalysisData = async (userId: string) => {
   try {
     // Get user profile
@@ -62,11 +69,22 @@ export const getAnalysisData = async (userId: string) => {
     }
 
     // Get career recommendations
-    const { data: careerRecs } = await supabase
+    const { data: careerRecsData } = await supabase
       .from('career_recs')
       .select('*')
       .eq('profile_id', profile.id)
       .order('match_score', { ascending: false });
+
+    // Transform career recommendations to match the interface
+    const careerRecs: CareerRecommendation[] = (careerRecsData || []).map(rec => ({
+      id: rec.id,
+      title: rec.title || '',
+      match_score: rec.match_score || 0,
+      salary_range: rec.salary_range || '',
+      growth: rec.growth || '',
+      description: rec.description || '',
+      skill_gaps: [] // Will be populated from skill_gaps table or analysis
+    }));
 
     // Get skill gaps
     const { data: skillGaps } = await supabase
@@ -92,7 +110,7 @@ export const getAnalysisData = async (userId: string) => {
 
     return {
       profile,
-      careerRecs: careerRecs || [],
+      careerRecs,
       skillGaps: skillGaps || [],
       advisoryReport
     };
@@ -122,7 +140,7 @@ export const getZaneCourses = async (): Promise<Course[]> => {
   }
 };
 
-export const consumeCredit = async (profileId: string) => {
+export const consumeCredit = async (profileId: string): Promise<CreditResponse> => {
   try {
     const { data, error } = await supabase
       .rpc('consume_credit', { user_profile_id: profileId });
@@ -131,7 +149,8 @@ export const consumeCredit = async (profileId: string) => {
       throw new Error(error.message);
     }
 
-    return data;
+    // Type assertion since we know the structure of our function response
+    return data as CreditResponse;
   } catch (error) {
     console.error('Error consuming credit:', error);
     throw error;

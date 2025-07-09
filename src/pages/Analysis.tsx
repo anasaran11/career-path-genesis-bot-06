@@ -108,7 +108,7 @@ const Analysis = () => {
       setJobScanLoading(true);
       const result = await consumeCredit(userProfile.id);
       
-      if (result.success) {
+      if (result.success && typeof result.remaining_credits === 'number') {
         setCredits(result.remaining_credits);
         navigate('/job-scan');
         toast({
@@ -116,7 +116,7 @@ const Analysis = () => {
           description: `Scanning jobs... ${result.remaining_credits} credits remaining.`,
         });
       } else {
-        throw new Error(result.error);
+        throw new Error(result.error || 'Failed to consume credit');
       }
     } catch (error) {
       toast({
