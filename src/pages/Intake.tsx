@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,13 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Progress } from "@/components/ui/progress";
 import { ArrowLeft, User, BookOpen, Award, Target, Brain, ChevronRight } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "@/contexts/AuthContext";
+import { useStudentAuth } from "@/contexts/StudentAuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { submitIntakeData, IntakeFormData } from "@/services/intakeService";
 
 const Intake = () => {
   const navigate = useNavigate();
-  const { user, loading } = useAuth();
+  const { student, loading } = useStudentAuth();
   const { toast } = useToast();
   
   const [currentStep, setCurrentStep] = useState(1);
@@ -53,15 +54,15 @@ const Intake = () => {
   const progress = (currentStep / totalSteps) * 100;
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && !student) {
       toast({
         title: "Authentication Required",
-        description: "Please sign up or log in to complete your profile intake.",
+        description: "Please sign in to complete your profile intake.",
         variant: "destructive",
       });
-      navigate('/');
+      navigate('/signin');
     }
-  }, [user, loading, navigate, toast]);
+  }, [student, loading, navigate, toast]);
 
   const handleNext = async () => {
     if (currentStep < totalSteps) {
@@ -73,10 +74,10 @@ const Intake = () => {
   };
 
   const handleSubmit = async () => {
-    if (!user) {
+    if (!student) {
       toast({
         title: "Error",
-        description: "User not authenticated",
+        description: "Student not authenticated",
         variant: "destructive",
       });
       return;
@@ -85,7 +86,7 @@ const Intake = () => {
     setSubmitting(true);
     
     try {
-      const result = await submitIntakeData(formData, user.id);
+      const result = await submitIntakeData(formData, student.id);
       
       if (result.success) {
         toast({
@@ -145,7 +146,7 @@ const Intake = () => {
     );
   }
 
-  if (!user) return null;
+  if (!student) return null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
@@ -188,20 +189,16 @@ const Intake = () => {
 
           <div className="flex justify-between mt-8 px-4">
             {[
-              { step: 1, icon: User, label: "Personal Info", emoji: "👤" },
-              { step: 2, icon: BookOpen, label: "Education", emoji: "🎓" },
-              { step: 3, icon: Award, label: "Skills & Experience", emoji: "💡" },
-              { step: 4, icon: Target, label: "Career Goals", emoji: "🎯" }
+              { step: 1, icon: User, label: "Personal Info" },
+              { step: 2, icon: BookOpen, label: "Education" },
+              { step: 3, icon: Award, label: "Skills & Experience" },
+              { step: 4, icon: Target, label: "Career Goals" }
             ].map((item) => (
               <div key={item.step} className={`flex flex-col items-center transition-all duration-300 ${currentStep >= item.step ? 'text-navy-600' : 'text-slate-400'}`}>
                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-2 transition-all duration-300 ${
                   currentStep >= item.step ? 'bg-gradient-to-r from-navy-500 to-autumn-500 shadow-lg scale-110' : 'bg-slate-100'
                 }`}>
-                  {currentStep >= item.step ? (
-                    <item.icon className="w-6 h-6 text-white" />
-                  ) : (
-                    <span className="text-lg">{item.emoji}</span>
-                  )}
+                  <item.icon className={`w-6 h-6 ${currentStep >= item.step ? 'text-white' : 'text-slate-400'}`} />
                 </div>
                 <span className="text-xs text-center hidden sm:block font-medium">{item.label}</span>
               </div>
@@ -270,7 +267,7 @@ const PersonalInfoStep = ({ formData, updateFormData }: any) => (
         <User className="w-8 h-8 text-white" />
       </div>
       <h2 className="text-2xl font-bold text-navy-800 mb-2">Personal Information</h2>
-      <p className="text-slate-600">👤 Let's start with your basic details</p>
+      <p className="text-slate-600">Let's start with your basic details</p>
     </div>
     
     <div className="grid md:grid-cols-2 gap-6">
@@ -326,7 +323,7 @@ const EducationStep = ({ formData, updateFormData }: any) => (
         <BookOpen className="w-8 h-8 text-white" />
       </div>
       <h2 className="text-2xl font-bold text-navy-800 mb-2">Education Background</h2>
-      <p className="text-slate-600">🎓 Tell me about your academic journey in healthcare</p>
+      <p className="text-slate-600">Tell me about your academic journey in healthcare</p>
     </div>
     
     <div className="bg-slate-50 rounded-xl p-6 border-l-4 border-navy-400">
@@ -437,7 +434,7 @@ const SkillsExperienceStep = ({ formData, updateFormData }: any) => (
         <Award className="w-8 h-8 text-white" />
       </div>
       <h2 className="text-2xl font-bold text-navy-800 mb-2">Skills & Experience</h2>
-      <p className="text-slate-600">💡 Share your healthcare skills, projects, and experiences</p>
+      <p className="text-slate-600">Share your healthcare skills, projects, and experiences</p>
     </div>
     
     <div className="space-y-6">
@@ -506,27 +503,27 @@ const CareerGoalsStep = ({ formData, updateFormData }: any) => (
         <Target className="w-8 h-8 text-white" />
       </div>
       <h2 className="text-2xl font-bold text-navy-800 mb-2">Career Goals & Preferences</h2>
-      <p className="text-slate-600">🎯 Help me understand your healthcare career aspirations</p>
+      <p className="text-slate-600">Help me understand your healthcare career aspirations</p>
     </div>
     
     <div className="space-y-6">
       <div className="space-y-2">
-        <Label className="text-navy-700 font-medium">Preferred Industry *</Label>
+        <Label className="text-navy-700 font-medium">Preferred Healthcare Industry *</Label>
         <Select value={formData.preferredIndustry} onValueChange={(value) => updateFormData('preferredIndustry', value)}>
           <SelectTrigger className="bg-slate-50 border-slate-200 text-navy-800 focus:border-navy-400 focus:bg-white rounded-lg">
             <SelectValue placeholder="Select your preferred healthcare industry" />
           </SelectTrigger>
           <SelectContent className="bg-white border-slate-200 rounded-lg">
-            <SelectItem value="clinical-pharmacy">🏥 Clinical Pharmacy & Hospitals</SelectItem>
-            <SelectItem value="pharma-industry">🧪 Healthcare Industry</SelectItem>
-            <SelectItem value="clinical-research">🔬 Clinical Research & CROs</SelectItem>
-            <SelectItem value="regulatory">📋 Regulatory Affairs</SelectItem>
-            <SelectItem value="pharma-tech">💻 Healthcare Technology</SelectItem>
-            <SelectItem value="academic">🎓 Academia & Teaching</SelectItem>
-            <SelectItem value="medical-writing">📝 Medical Writing</SelectItem>
-            <SelectItem value="consulting">💼 Healthcare Consulting</SelectItem>
-            <SelectItem value="international">🌍 International Opportunities</SelectItem>
-            <SelectItem value="entrepreneurship">🚀 Healthcare Entrepreneurship</SelectItem>
+            <SelectItem value="clinical-research">Clinical Research</SelectItem>
+            <SelectItem value="regulatory-affairs">Regulatory Affairs</SelectItem>
+            <SelectItem value="medical-writing">Medical Writing</SelectItem>
+            <SelectItem value="pharmacovigilance">Pharmacovigilance</SelectItem>
+            <SelectItem value="healthcare-data-analytics">Healthcare Data Analytics</SelectItem>
+            <SelectItem value="clinical-pharmacy">Clinical Pharmacy & Hospitals</SelectItem>
+            <SelectItem value="pharma-industry">Healthcare Industry</SelectItem>
+            <SelectItem value="pharma-tech">Healthcare Technology</SelectItem>
+            <SelectItem value="academic">Academia & Teaching</SelectItem>
+            <SelectItem value="consulting">Healthcare Consulting</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -578,10 +575,10 @@ const CareerGoalsStep = ({ formData, updateFormData }: any) => (
             <SelectValue placeholder="Select work style" />
           </SelectTrigger>
           <SelectContent className="bg-white border-slate-200 rounded-lg">
-            <SelectItem value="clinical-onsite">🏥 Clinical/Hospital - On-site</SelectItem>
-            <SelectItem value="hybrid">🏢 Hybrid (2-3 days office)</SelectItem>
-            <SelectItem value="remote">💻 Fully Remote</SelectItem>
-            <SelectItem value="flexible">⚡ Flexible</SelectItem>
+            <SelectItem value="clinical-onsite">Clinical/Hospital - On-site</SelectItem>
+            <SelectItem value="hybrid">Hybrid (2-3 days office)</SelectItem>
+            <SelectItem value="remote">Fully Remote</SelectItem>
+            <SelectItem value="flexible">Flexible</SelectItem>
           </SelectContent>
         </Select>
       </div>

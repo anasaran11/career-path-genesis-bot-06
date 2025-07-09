@@ -31,23 +31,14 @@ export interface IntakeFormData {
   workStyle: string;
 }
 
-export const submitIntakeData = async (formData: IntakeFormData, userId: string) => {
+export const submitIntakeData = async (formData: IntakeFormData, studentId: string) => {
   try {
-    console.log('Starting intake data submission for user:', userId);
+    console.log('Starting intake data submission for student:', studentId);
     
-    // 1. Get or create user profile
-    let { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('user_id', userId)
-      .single();
-
-    if (profileError && profileError.code !== 'PGRST116') {
-      throw new Error(`Profile error: ${profileError.message}`);
-    }
-
-    // Update profile with intake data
+    // Create a UUID from the student ID for profiles table
+    // Since we're using custom auth, we'll create profiles using the student ID
     const profileData = {
+      user_id: studentId,
       name: formData.fullName,
       email: formData.email,
       mobile: formData.phone,
@@ -55,27 +46,21 @@ export const submitIntakeData = async (formData: IntakeFormData, userId: string)
       updated_at: new Date().toISOString()
     };
 
-    if (profile) {
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update(profileData)
-        .eq('user_id', userId);
-      
-      if (updateError) throw new Error(`Profile update error: ${updateError.message}`);
-    } else {
-      const { data: newProfile, error: insertError } = await supabase
-        .from('profiles')
-        .insert({ ...profileData, user_id: userId })
-        .select()
-        .single();
-      
-      if (insertError) throw new Error(`Profile insert error: ${insertError.message}`);
-      profile = newProfile;
+    // Insert or update profile
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .upsert(profileData, { onConflict: 'user_id' })
+      .select()
+      .single();
+
+    if (profileError) {
+      console.error('Profile error:', profileError);
+      throw new Error(`Profile error: ${profileError.message}`);
     }
 
     console.log('Profile handled successfully:', profile?.id);
 
-    // 2. Insert education data
+    // Insert education data
     const educationEntries = [];
     
     if (formData.ugDegree) {
@@ -97,6 +82,12 @@ export const submitIntakeData = async (formData: IntakeFormData, userId: string)
     }
 
     if (educationEntries.length > 0) {
+      // Delete existing education records for this profile
+      await supabase
+        .from('educations')
+        .delete()
+        .eq('profile_id', profile.id);
+
       const { error: educationError } = await supabase
         .from('educations')
         .insert(educationEntries);
@@ -108,7 +99,7 @@ export const submitIntakeData = async (formData: IntakeFormData, userId: string)
       }
     }
 
-    // 3. Handle skills
+    // Handle skills
     if (formData.technicalSkills || formData.softSkills) {
       const allSkills = [];
       
@@ -122,45 +113,55 @@ export const submitIntakeData = async (formData: IntakeFormData, userId: string)
         allSkills.push(...softSkills);
       }
 
-      // Insert skills that don't exist
-      for (const skillName of allSkills) {
-        const { error: skillError } = await supabase
-          .from('skills')
-          .insert({ name: skillName })
-          .select();
-        
-        if (skillError && !skillError.message.includes('duplicate')) {
-          console.error('Skill insert error:', skillError);
+      if (allSkills.length > 0) {
+        // First, ensure all skills exist in the skills table
+        for (const skillName of allSkills) {
+          await supabase
+            .from('skills')
+            .upsert({ name: skillName }, { onConflict: 'name' });
         }
-      }
 
-      // Link skills to profile
-      const { data: existingSkills } = await supabase
-        .from('skills')
-        .select('*')
-        .in('name', allSkills);
+        // Get skill IDs
+        const { data: existingSkills } = await supabase
+          .from('skills')
+          .select('*')
+          .in('name', allSkills);
 
-      if (existingSkills) {
-        const profileSkills = existingSkills.map(skill => ({
-          profile_id: profile.id,
-          skill_id: skill.id,
-          level: 50 // Default level
-        }));
+        if (existingSkills) {
+          // Delete existing profile skills
+          await supabase
+            .from('profile_skills')
+            .delete()
+            .eq('profile_id', profile.id);
 
-        const { error: profileSkillsError } = await supabase
-          .from('profile_skills')
-          .insert(profileSkills);
-        
-        if (profileSkillsError) {
-          console.error('Profile skills error:', profileSkillsError);
-        } else {
-          console.log('Skills linked to profile successfully');
+          // Insert new profile skills
+          const profileSkills = existingSkills.map(skill => ({
+            profile_id: profile.id,
+            skill_id: skill.id,
+            level: 50 // Default level
+          }));
+
+          const { error: profileSkillsError } = await supabase
+            .from('profile_skills')
+            .insert(profileSkills);
+          
+          if (profileSkillsError) {
+            console.error('Profile skills error:', profileSkillsError);
+          } else {
+            console.log('Skills linked to profile successfully');
+          }
         }
       }
     }
 
-    // 4. Insert experience data
+    // Insert experience data (internships)
     if (formData.internships) {
+      // Delete existing experiences
+      await supabase
+        .from('experiences')
+        .delete()
+        .eq('profile_id', profile.id);
+
       const { error: experienceError } = await supabase
         .from('experiences')
         .insert({
@@ -174,15 +175,23 @@ export const submitIntakeData = async (formData: IntakeFormData, userId: string)
       }
     }
 
-    // 5. Insert certifications
+    // Insert certifications
     if (formData.certifications) {
       const certList = formData.certifications.split(',').map(c => c.trim()).filter(c => c);
-      const certEntries = certList.map(cert => ({
-        profile_id: profile.id,
-        name: cert
-      }));
+      
+      if (certList.length > 0) {
+        // Delete existing certifications
+        await supabase
+          .from('certifications')
+          .delete()
+          .eq('profile_id', profile.id);
 
-      if (certEntries.length > 0) {
+        const certEntries = certList.map(cert => ({
+          profile_id: profile.id,
+          name: cert,
+          verified: false // Unverified until manual review
+        }));
+
         const { error: certError } = await supabase
           .from('certifications')
           .insert(certEntries);
@@ -195,7 +204,7 @@ export const submitIntakeData = async (formData: IntakeFormData, userId: string)
       }
     }
 
-    // 6. Insert job preferences
+    // Insert job preferences
     const jobPrefData = {
       profile_id: profile.id,
       desired_roles: formData.preferredIndustry ? [formData.preferredIndustry] : [],
@@ -212,22 +221,6 @@ export const submitIntakeData = async (formData: IntakeFormData, userId: string)
       console.error('Job preferences error:', jobPrefError);
     } else {
       console.log('Job preferences saved successfully');
-    }
-
-    // 7. Trigger AI analysis
-    console.log('Triggering AI analysis for profile:', userId);
-    try {
-      const { data: analysisResult, error: analysisError } = await supabase.functions.invoke('analyzeProfile', {
-        body: { profile_id: userId }
-      });
-
-      if (analysisError) {
-        console.error('Analysis error:', analysisError);
-      } else {
-        console.log('Analysis completed successfully:', analysisResult);
-      }
-    } catch (error) {
-      console.error('Failed to trigger analysis:', error);
     }
 
     console.log('Intake data submission completed successfully');

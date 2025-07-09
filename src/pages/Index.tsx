@@ -1,15 +1,27 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowDown, User, Search, FileText, Sparkles, Brain, Target } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import { useStudentAuth } from "@/contexts/StudentAuthContext";
+import SignIn from "./SignIn";
 
 const Index = () => {
   const navigate = useNavigate();
+  const { student, signOut } = useStudentAuth();
+  const [showSignInModal, setShowSignInModal] = useState(false);
 
   const handleGetStarted = () => {
-    navigate('/intake');
+    if (student) {
+      navigate('/intake');
+    } else {
+      setShowSignInModal(true);
+    }
+  };
+
+  const handleSignOut = () => {
+    signOut();
   };
 
   return (
@@ -31,9 +43,26 @@ const Index = () => {
             <a href="#process" className="text-slate-600 hover:text-navy-600 transition-colors">How it Works</a>
             <a href="#contact" className="text-slate-600 hover:text-navy-600 transition-colors">Contact</a>
             
-            <Button onClick={handleGetStarted} className="bg-gradient-to-r from-navy-600 to-autumn-500 hover:from-navy-700 hover:to-autumn-600 text-white rounded-xl">
-              Get Started
-            </Button>
+            {student ? (
+              <div className="flex items-center space-x-3">
+                <span className="text-slate-600 text-sm">Welcome, {student.full_name}</span>
+                <Button onClick={handleGetStarted} className="bg-gradient-to-r from-navy-600 to-autumn-500 hover:from-navy-700 hover:to-autumn-600 text-white rounded-xl">
+                  Dashboard
+                </Button>
+                <Button variant="outline" onClick={handleSignOut} className="rounded-xl">
+                  Sign Out
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center space-x-3">
+                <Button variant="outline" onClick={() => setShowSignInModal(true)} className="rounded-xl">
+                  Sign In
+                </Button>
+                <Button onClick={handleGetStarted} className="bg-gradient-to-r from-navy-600 to-autumn-500 hover:from-navy-700 hover:to-autumn-600 text-white rounded-xl">
+                  Get Started
+                </Button>
+              </div>
+            )}
           </nav>
         </div>
       </header>
@@ -60,7 +89,7 @@ const Index = () => {
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16 animate-fade-in">
               <Button onClick={handleGetStarted} size="lg" className="bg-gradient-to-r from-navy-600 to-autumn-500 hover:from-navy-700 hover:to-autumn-600 text-white px-8 py-4 text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
-                Start Your Career Journey
+                {student ? 'Continue Your Journey' : 'Start Your Career Journey'}
                 <Target className="w-5 h-5 ml-2" />
               </Button>
               <Button variant="outline" size="lg" className="border-2 border-navy-200 text-navy-700 hover:bg-navy-50 px-8 py-4 text-lg rounded-xl transition-all duration-300">
@@ -243,6 +272,14 @@ const Index = () => {
           </div>
         </div>
       </footer>
+
+      {/* Sign In Modal */}
+      {showSignInModal && (
+        <SignIn 
+          isModal={true} 
+          onClose={() => setShowSignInModal(false)} 
+        />
+      )}
     </div>
   );
 };
