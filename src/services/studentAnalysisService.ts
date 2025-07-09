@@ -222,27 +222,33 @@ export const analyzeStudentProfile = async (
     );
     console.log("Generated advisory report:", advisoryReport);
 
-    // Store results for future reference
+    // Store results for future reference - with improved error handling
     try {
-      await storeAnalysisResults(
+      const storeSuccess = await storeAnalysisResults(
         studentId,
         careerRecs,
         skillGaps,
         advisoryReport,
       );
+      if (!storeSuccess) {
+        console.log(
+          "Database storage not available, using localStorage backup",
+        );
+      }
     } catch (storeError) {
       console.warn("Could not store analysis results in database:", storeError);
-      // Store in localStorage as backup
-      localStorage.setItem(
-        `analysis_${studentId}`,
-        JSON.stringify({
-          career_recs: careerRecs,
-          skill_gaps: skillGaps,
-          advisory_report: advisoryReport,
-          analyzed_at: new Date().toISOString(),
-        }),
-      );
     }
+
+    // Always store in localStorage as backup/primary storage
+    localStorage.setItem(
+      `analysis_${studentId}`,
+      JSON.stringify({
+        career_recs: careerRecs,
+        skill_gaps: skillGaps,
+        advisory_report: advisoryReport,
+        analyzed_at: new Date().toISOString(),
+      }),
+    );
 
     return {
       career_recs: careerRecs,
@@ -554,17 +560,24 @@ const storeAnalysisResults = async (
   careerRecs: CareerRecommendation[],
   skillGaps: string[],
   advisoryReport: AdvisoryReport,
-) => {
+): Promise<boolean> => {
   try {
     // Try to get profile ID
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("id")
       .eq("user_id", studentId)
       .single();
 
-    if (!profile) {
-      throw new Error("Profile not found for storing analysis results");
+    if (profileError || !profile) {
+      console.warn(
+        "Profile not found in database for storing analysis results. Student ID:",
+        studentId,
+        "Error:",
+        profileError,
+      );
+      // Return false instead of throwing error
+      return false;
     }
 
     // Store career recommendations
@@ -605,9 +618,10 @@ const storeAnalysisResults = async (
     );
 
     console.log("Analysis results stored successfully in database");
+    return true;
   } catch (error) {
     console.error("Error storing analysis results:", error);
-    throw error;
+    return false;
   }
 };
 
