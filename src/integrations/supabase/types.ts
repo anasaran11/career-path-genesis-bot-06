@@ -545,6 +545,42 @@ export type Database = {
         }
         Relationships: []
       }
+      students: {
+        Row: {
+          created_at: string | null
+          credits: number | null
+          email: string
+          full_name: string
+          id: string
+          institution: string
+          last_login: string | null
+          password: string
+          username: string
+        }
+        Insert: {
+          created_at?: string | null
+          credits?: number | null
+          email: string
+          full_name: string
+          id?: string
+          institution: string
+          last_login?: string | null
+          password: string
+          username: string
+        }
+        Update: {
+          created_at?: string | null
+          credits?: number | null
+          email?: string
+          full_name?: string
+          id?: string
+          institution?: string
+          last_login?: string | null
+          password?: string
+          username?: string
+        }
+        Relationships: []
+      }
       zane_courses: {
         Row: {
           active: boolean | null
@@ -599,6 +635,10 @@ export type Database = {
       }
       get_full_profile: {
         Args: { uid: string }
+        Returns: Json
+      }
+      verify_login: {
+        Args: { input_username: string; input_password: string }
         Returns: Json
       }
     }
