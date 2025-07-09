@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,7 +16,8 @@ import {
   AlertTriangle,
   CheckCircle,
   ExternalLink,
-  Brain
+  Brain,
+  FileText
 } from 'lucide-react';
 
 interface CareerRecommendation {
