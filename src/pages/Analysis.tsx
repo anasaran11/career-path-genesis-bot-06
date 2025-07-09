@@ -6,18 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/contexts/AuthContext';
+import { useStudentAuth } from '@/contexts/StudentAuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import {
-  getAnalysisData,
-  getZaneCourses,
-  consumeCredit,
-  getUserCredits,
-  type CareerRecommendation,
-  type SkillGap,
-  type AdvisoryReport,
-  type Course
-} from '@/services/analysisService';
-import { 
   TrendingUp, 
   Target, 
   BookOpen, 
@@ -25,41 +16,64 @@ import {
   CreditCard,
   AlertTriangle,
   CheckCircle,
-  ExternalLink 
+  ExternalLink,
+  Brain
 } from 'lucide-react';
+
+interface CareerRecommendation {
+  title: string;
+  match_score: number;
+  salary_range: string;
+  growth: string;
+  skill_gaps: string[];
+  description?: string;
+}
 
 const Analysis = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user, userProfile } = useAuth();
+  const { student } = useStudentAuth();
   
   const [careerRecs, setCareerRecs] = useState<CareerRecommendation[]>([]);
-  const [skillGaps, setSkillGaps] = useState<SkillGap[]>([]);
-  const [advisoryReport, setAdvisoryReport] = useState<AdvisoryReport | null>(null);
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [credits, setCredits] = useState(0);
+  const [skillGaps, setSkillGaps] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [jobScanLoading, setJobScanLoading] = useState(false);
 
   useEffect(() => {
-    if (user) {
+    if (student) {
       loadAnalysisData();
-      loadCredits();
-      loadCourses();
     }
-  }, [user]);
+  }, [student]);
 
   const loadAnalysisData = async () => {
     try {
-      const data = await getAnalysisData(user.id);
-      setCareerRecs(data.careerRecs);
-      setSkillGaps(data.skillGaps);
-      setAdvisoryReport(data.advisoryReport);
+      console.log('Starting profile analysis for student:', student.id);
+      
+      // Call the analyzeProfile edge function
+      const { data, error } = await supabase.functions.invoke('analyzeProfile', {
+        body: { profile_id: student.id }
+      });
+
+      if (error) {
+        console.error('Analysis error:', error);
+        throw error;
+      }
+
+      console.log('Analysis response:', data);
+      
+      if (data.career_recs) {
+        setCareerRecs(data.career_recs);
+      }
+      
+      if (data.skill_gaps) {
+        setSkillGaps(data.skill_gaps);
+      }
+
     } catch (error) {
       console.error('Failed to load analysis data:', error);
       toast({
-        title: "Error",
-        description: "Failed to load analysis data. Please try again.",
+        title: "Analysis Error",
+        description: "Failed to analyze your profile. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -67,35 +81,17 @@ const Analysis = () => {
     }
   };
 
-  const loadCredits = async () => {
-    try {
-      const userCredits = await getUserCredits(user.id);
-      setCredits(userCredits);
-    } catch (error) {
-      console.error('Failed to load credits:', error);
-    }
-  };
-
-  const loadCourses = async () => {
-    try {
-      const zaneCourses = await getZaneCourses();
-      setCourses(zaneCourses);
-    } catch (error) {
-      console.error('Failed to load courses:', error);
-    }
-  };
-
   const handleJobScan = async () => {
     if (skillGaps.length > 0) {
       toast({
         title: "Skill Gaps Detected",
-        description: `You need to upskill in ${skillGaps.map(gap => gap.missing_skill).join(', ')} before job searching—view your advisory report below.`,
+        description: `You need to upskill in ${skillGaps.join(', ')} before job searching—view your advisory report below.`,
         variant: "destructive",
       });
       return;
     }
 
-    if (credits <= 0) {
+    if (student.credits <= 0) {
       toast({
         title: "No Credits Remaining",
         description: "You've used all your free scans. Purchase more credits to continue.",
@@ -104,20 +100,24 @@ const Analysis = () => {
       return;
     }
 
+    setJobScanLoading(true);
+    
     try {
-      setJobScanLoading(true);
-      const result = await consumeCredit(userProfile.id);
+      // Call job scan endpoint
+      const { data, error } = await supabase.functions.invoke('scanJobs', {
+        body: { profile_id: student.id }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Job Scan Started",
+        description: "Scanning for relevant healthcare positions...",
+      });
       
-      if (result.success && typeof result.remaining_credits === 'number') {
-        setCredits(result.remaining_credits);
-        navigate('/job-scan');
-        toast({
-          title: "Job Scan Started",
-          description: `Scanning jobs... ${result.remaining_credits} credits remaining.`,
-        });
-      } else {
-        throw new Error(result.error || 'Failed to consume credit');
-      }
+      // Navigate to job scan results
+      navigate('/job-scan');
+      
     } catch (error) {
       toast({
         title: "Error",
@@ -129,15 +129,13 @@ const Analysis = () => {
     }
   };
 
-  const handleDownloadReport = () => {
-    // This would call a Pipedream endpoint or Edge Function
-    const reportUrl = `https://your-pipedream-domain/generate-full-report?profile_id=${user.id}`;
-    window.open(reportUrl, '_blank');
+  const handleAdvisoryReport = () => {
+    navigate('/advisory-report');
   };
 
   const renderJobScanButton = () => {
     const hasSkillGaps = skillGaps.length > 0;
-    const hasCredits = credits > 0;
+    const hasCredits = student?.credits > 0;
 
     if (hasSkillGaps) {
       return (
@@ -149,7 +147,7 @@ const Analysis = () => {
             <AlertTriangle className="mr-2 h-4 w-4" />
             Scan Jobs (Skill Gaps Detected)
           </Button>
-          <div className="absolute inset-0 bg-transparent" title={`You need to upskill in ${skillGaps.map(gap => gap.missing_skill).join(', ')} before job searching—view your advisory report below.`} />
+          <div className="absolute inset-0 bg-transparent" title={`You need to upskill in ${skillGaps.join(', ')} before job searching—view your advisory report below.`} />
         </div>
       );
     }
@@ -172,10 +170,10 @@ const Analysis = () => {
       <Button 
         onClick={handleJobScan} 
         disabled={jobScanLoading}
-        className="w-full"
+        className="w-full bg-gradient-to-r from-navy-600 to-autumn-500 hover:from-navy-700 hover:to-autumn-600 text-white"
       >
         <Target className="mr-2 h-4 w-4" />
-        {jobScanLoading ? 'Starting Scan...' : `Scan Jobs (${credits} credits)`}
+        {jobScanLoading ? 'Starting Scan...' : `Scan Jobs (${student?.credits || 0} credits)`}
       </Button>
     );
   };
@@ -184,7 +182,8 @@ const Analysis = () => {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="text-center">
-          <p className="text-lg">Analysis in progress… please wait a moment.</p>
+          <Brain className="w-12 h-12 animate-spin text-navy-600 mx-auto mb-4" />
+          <p className="text-lg">Analyzing your profile… please wait a moment.</p>
         </div>
       </div>
     );
@@ -206,7 +205,7 @@ const Analysis = () => {
           <CardHeader>
             <CardTitle className="text-orange-800 flex items-center">
               <AlertTriangle className="mr-2 h-5 w-5" />
-              Skill Development Required
+              Priority Skills to Upskill
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -214,9 +213,9 @@ const Analysis = () => {
               You currently lack {skillGaps.length} critical skills. Please complete your personalized learning plan below before searching jobs.
             </p>
             <div className="flex flex-wrap gap-2">
-              {skillGaps.map((gap) => (
-                <Badge key={gap.id} variant="outline" className="text-orange-800 border-orange-300">
-                  {gap.missing_skill}
+              {skillGaps.map((gap, index) => (
+                <Badge key={index} variant="outline" className="text-orange-800 border-orange-300">
+                  {gap}
                 </Badge>
               ))}
             </div>
@@ -228,22 +227,32 @@ const Analysis = () => {
       <section className="space-y-6">
         <div className="flex justify-between items-center">
           <h2 className="text-2xl font-semibold">Top Career Matches</h2>
-          {renderJobScanButton()}
+          <div className="flex gap-3">
+            {renderJobScanButton()}
+            <Button 
+              onClick={handleAdvisoryReport}
+              variant="outline"
+              className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white border-0"
+            >
+              <FileText className="mr-2 h-4 w-4" />
+              Get Advisory Report
+            </Button>
+          </div>
         </div>
 
         {careerRecs.length === 0 ? (
           <Card>
             <CardContent className="text-center py-8">
-              <p className="text-muted-foreground">Analysis in progress… please wait a moment.</p>
+              <p className="text-muted-foreground">No career recommendations available. Please complete your profile intake first.</p>
             </CardContent>
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {careerRecs.map((rec) => (
-              <Card key={rec.id} className="hover:shadow-lg transition-shadow">
+            {careerRecs.map((rec, index) => (
+              <Card key={index} className="hover:shadow-lg transition-shadow">
                 <CardHeader>
                   <CardTitle className="text-lg">{rec.title}</CardTitle>
-                  <CardDescription>{rec.description}</CardDescription>
+                  <CardDescription>{rec.description || `${rec.title} position in the healthcare/pharmaceutical sector`}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
@@ -269,10 +278,10 @@ const Analysis = () => {
 
                   {rec.skill_gaps && rec.skill_gaps.length > 0 && (
                     <div>
-                      <p className="text-sm font-medium mb-2">Skills to Up-skill:</p>
+                      <p className="text-sm font-medium mb-2">Skills to Upskill:</p>
                       <div className="flex flex-wrap gap-1">
-                        {rec.skill_gaps.map((skill, index) => (
-                          <Badge key={index} variant="outline" className="text-xs">
+                        {rec.skill_gaps.map((skill, skillIndex) => (
+                          <Badge key={skillIndex} variant="outline" className="text-xs">
                             {skill}
                           </Badge>
                         ))}
@@ -284,171 +293,6 @@ const Analysis = () => {
             ))}
           </div>
         )}
-      </section>
-
-      {/* Professional Career Advisory Report */}
-      <section className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-semibold">Professional Career Advisory Report</h2>
-          <Button onClick={handleDownloadReport} variant="outline">
-            <Download className="mr-2 h-4 w-4" />
-            Download Full Report
-          </Button>
-        </div>
-
-        {!advisoryReport ? (
-          <Card>
-            <CardContent className="text-center py-8">
-              <p className="text-muted-foreground">Building your personalized plan… check back in a moment.</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Career Fit Analysis */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <TrendingUp className="mr-2 h-5 w-5" />
-                  Career Fit Analysis
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span>Overall Fit Score</span>
-                    <span className="font-medium">{advisoryReport.career_fit.score}%</span>
-                  </div>
-                  <Progress value={advisoryReport.career_fit.score} className="h-2" />
-                </div>
-                <div>
-                  <h4 className="font-medium mb-2">Next Actions:</h4>
-                  <ul className="space-y-1 text-sm">
-                    {advisoryReport.career_fit.next_actions.map((action, index) => (
-                      <li key={index} className="flex items-start">
-                        <CheckCircle className="mr-2 h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                        {action}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Skill Development Priority */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <BookOpen className="mr-2 h-5 w-5" />
-                  Skill Development Priority
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {advisoryReport.learning_priorities.map((priority, index) => (
-                    <div key={index} className="border-l-4 border-blue-500 pl-4">
-                      <div className="flex justify-between items-start mb-1">
-                        <h4 className="font-medium text-sm">{priority.title}</h4>
-                        <Badge variant={priority.priority === 'High' ? 'default' : 'secondary'} className="text-xs">
-                          {priority.priority}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground mb-1">{priority.timeframe}</p>
-                      <p className="text-sm">{priority.next_action}</p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Growth Opportunities */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Target className="mr-2 h-5 w-5" />
-                  Growth Opportunities
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {advisoryReport.path_strategy.map((strategy, index) => (
-                    <div key={index} className="border-l-4 border-green-500 pl-4">
-                      <div className="flex justify-between items-start mb-1">
-                        <h4 className="font-medium text-sm">{strategy.title}</h4>
-                        <Badge variant={strategy.priority === 'High' ? 'default' : 'secondary'} className="text-xs">
-                          {strategy.priority}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground mb-1">{strategy.timeframe}</p>
-                      <p className="text-sm">{strategy.next_action}</p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-      </section>
-
-      {/* Explore Learning Path */}
-      <section className="space-y-6">
-        <h2 className="text-2xl font-semibold">Explore Learning Path</h2>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {courses.map((course) => (
-            <Card key={course.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <CardTitle className="text-lg">{course.title}</CardTitle>
-                {course.summary && (
-                  <CardDescription>{course.summary}</CardDescription>
-                )}
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2 text-sm">
-                  {course.duration && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Duration:</span>
-                      <span>{course.duration}</span>
-                    </div>
-                  )}
-                  {course.level && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Level:</span>
-                      <Badge variant="outline">{course.level}</Badge>
-                    </div>
-                  )}
-                  {course.price && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Price:</span>
-                      <span className="font-medium">${course.price}</span>
-                    </div>
-                  )}
-                </div>
-
-                {course.key_skills && course.key_skills.length > 0 && (
-                  <div>
-                    <p className="text-sm font-medium mb-2">Key Skills:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {course.key_skills.map((skill, index) => (
-                        <Badge key={index} variant="outline" className="text-xs">
-                          {skill}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <Button 
-                  variant="outline" 
-                  className="w-full"
-                  onClick={() => window.open(`https://zaneproed.com/courses/${course.course_id}`, '_blank')}
-                >
-                  View Details
-                  <ExternalLink className="ml-2 h-4 w-4" />
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
       </section>
     </div>
   );

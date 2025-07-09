@@ -4,123 +4,73 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { ArrowLeft, FileText, TrendingUp, Target, Award, Book, Globe, Lightbulb, Download, BarChart3, Brain, Rocket } from "lucide-react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useStudentAuth } from "@/contexts/StudentAuthContext";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from '@/integrations/supabase/client';
 import ConsultationModal from "@/components/ConsultationModal";
 
+interface AdvisoryData {
+  career_fit_score: number;
+  next_actions: string[];
+  learning_priorities: Array<{
+    title: string;
+    priority: string;
+    timeframe: string;
+    next_action: string;
+  }>;
+  path_strategy: Array<{
+    title: string;
+    priority: string;
+    timeframe: string;
+    next_action: string;
+  }>;
+}
+
 const AdvisoryReport = () => {
-  const location = useLocation();
   const navigate = useNavigate();
-  const studentData = location.state?.studentData || {};
-  const [isAnalyzing, setIsAnalyzing] = useState(true);
-  const [analysisProgress, setAnalysisProgress] = useState(0);
-  const [currentPhase, setCurrentPhase] = useState('Analyzing your profile...');
+  const { student } = useStudentAuth();
+  const { toast } = useToast();
+  const [advisoryData, setAdvisoryData] = useState<AdvisoryData | null>(null);
+  const [loading, setLoading] = useState(true);
   const [showConsultationModal, setShowConsultationModal] = useState(false);
 
-  const analysisPhases = [
-    'Analyzing your profile...',
-    'Evaluating market trends...',
-    'Matching skills to opportunities...',
-    'Generating personalized insights...',
-    'Preparing recommendations...'
-  ];
-
   useEffect(() => {
-    let phase = 0;
-    const interval = setInterval(() => {
-      setAnalysisProgress(prev => {
-        const newProgress = prev + 4;
-        if (newProgress >= 100) {
-          setIsAnalyzing(false);
-          clearInterval(interval);
-          return 100;
-        }
-        if (newProgress > (phase + 1) * 20) {
-          phase++;
-          if (phase < analysisPhases.length) {
-            setCurrentPhase(analysisPhases[phase]);
-          }
-        }
-        return newProgress;
+    if (student) {
+      loadAdvisoryReport();
+    }
+  }, [student]);
+
+  const loadAdvisoryReport = async () => {
+    try {
+      console.log('Loading advisory report for student:', student.id);
+      
+      // Call the advisory report endpoint
+      const { data, error } = await supabase.functions.invoke('advisoryReport', {
+        body: { profile_id: student.id }
       });
-    }, 150);
 
-    return () => clearInterval(interval);
-  }, []);
+      if (error) {
+        console.error('Advisory report error:', error);
+        throw error;
+      }
 
-  const insights = [
-    {
-      icon: BarChart3,
-      title: "Career Fit Analysis",
-      score: 92,
-      description: "Your healthcare background aligns excellently with clinical and regulatory roles",
-      actionItems: [
-        "Focus on GCP certification for clinical research",
-        "Build regulatory knowledge through courses"
-      ],
-      color: "from-blue-500 to-blue-700"
-    },
-    {
-      icon: Brain,
-      title: "Skill Development Priority",
-      score: 78,
-      description: "Strong foundation with key areas for enhancement identified",
-      actionItems: [
-        "Complete pharmacovigilance certification",
-        "Learn healthcare data analytics tools"
-      ],
-      color: "from-purple-500 to-purple-700"
-    },
-    {
-      icon: Rocket,
-      title: "Growth Opportunities",
-      score: 85,
-      description: "Multiple high-growth career paths available in your field",
-      actionItems: [
-        "Network with industry professionals",
-        "Consider international licensing (NAPLEX/PEBC)"
-      ],
-      color: "from-green-500 to-green-700"
+      console.log('Advisory report response:', data);
+      setAdvisoryData(data);
+      
+    } catch (error) {
+      console.error('Failed to load advisory report:', error);
+      toast({
+        title: "Error",
+        description: "Advisory Report not available. Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
 
-  const recommendations = [
-    {
-      category: "📚 Immediate Learning Priorities",
-      priority: "High",
-      timeline: "2-3 months",
-      items: [
-        {
-          title: "Good Clinical Practice (GCP) Certification",
-          description: "Essential for clinical research roles",
-          action: "Enroll in ICH-GCP course through NIDA/ACRP"
-        },
-        {
-          title: "Pharmacovigilance Training",
-          description: "Drug safety expertise in high demand",
-          action: "Complete PV certification from recognized institute"
-        }
-      ]
-    },
-    {
-      category: "🎯 Career Path Strategy",
-      priority: "Medium",
-      timeline: "6-12 months",
-      items: [
-        {
-          title: "Start with Clinical Roles",
-          description: "Build strong foundation in hospital pharmacy",
-          action: "Apply to hospitals with structured healthcare programs"
-        },
-        {
-          title: "Industry Transition Plan",
-          description: "Move to healthcare industry after clinical experience",
-          action: "Network with industry professionals"
-        }
-      ]
-    }
-  ];
-
-  if (isAnalyzing) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
         <Card className="bg-white/90 backdrop-blur-sm shadow-2xl border-0 max-w-lg w-full mx-4 animate-scale-in">
@@ -133,17 +83,25 @@ const AdvisoryReport = () => {
               <div className="w-12 h-12 bg-gradient-to-r from-navy-600 to-navy-800 rounded-xl flex items-center justify-center mx-auto mb-4">
                 <span className="text-white font-bold text-lg">Z</span>
               </div>
-              <h2 className="text-2xl font-bold text-navy-900 mb-2">Zane AI is reviewing your profile...</h2>
-              <p className="text-navy-600">Generating personalized career insights just for you</p>
+              <h2 className="text-2xl font-bold text-navy-900 mb-2">Generating your advisory report...</h2>
+              <p className="text-navy-600">Creating personalized career insights just for you</p>
             </div>
-            
-            <div className="space-y-4">
-              <div className="flex justify-between text-sm">
-                <span className="text-navy-700">{currentPhase}</span>
-                <span className="text-navy-500">{analysisProgress}%</span>
-              </div>
-              <Progress value={analysisProgress} className="h-3" />
-            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!advisoryData) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
+        <Card className="bg-white shadow-xl border-0 max-w-lg w-full mx-4">
+          <CardContent className="p-8 text-center">
+            <h2 className="text-2xl font-bold text-navy-900 mb-4">Advisory Report Unavailable</h2>
+            <p className="text-navy-600 mb-6">Please complete your profile intake first to generate your personalized advisory report.</p>
+            <Button onClick={() => navigate('/intake')} className="bg-gradient-to-r from-navy-600 to-autumn-500 hover:from-navy-700 hover:to-autumn-600 text-white">
+              Complete Profile
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -197,75 +155,137 @@ const AdvisoryReport = () => {
 
           {/* Key Insights Dashboard */}
           <div className="grid md:grid-cols-3 gap-8 mb-12">
-            {insights.map((insight, index) => (
-              <Card key={index} className="bg-white shadow-xl border-0 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 animate-fade-in" style={{
-                animationDelay: `${index * 0.1}s`
-              }}>
-                <CardContent className="p-6">
-                  <div className={`w-12 h-12 bg-gradient-to-r ${insight.color} rounded-xl flex items-center justify-center mb-4`}>
-                    <insight.icon className="w-6 h-6 text-white" />
-                  </div>
-                  <h3 className="text-xl font-bold text-navy-900 mb-2">{insight.title}</h3>
-                  <div className="flex items-center mb-3">
-                    <div className="text-3xl font-bold text-navy-800 mr-3">{insight.score}%</div>
-                    <Progress value={insight.score} className="flex-1 h-2" />
-                  </div>
-                  <p className="text-navy-600 mb-4">{insight.description}</p>
-                  <div className="space-y-2">
-                    <p className="text-sm font-semibold text-navy-700">What you should do next:</p>
-                    {insight.actionItems.map((action, idx) => (
-                      <div key={idx} className="flex items-start text-sm text-navy-600">
-                        <div className="w-1.5 h-1.5 bg-autumn-500 rounded-full mr-2 mt-2 flex-shrink-0"></div>
-                        {action}
+            <Card className="bg-white shadow-xl border-0 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 animate-fade-in">
+              <CardContent className="p-6">
+                <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-700 rounded-xl flex items-center justify-center mb-4">
+                  <BarChart3 className="w-6 h-6 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-navy-900 mb-2">Career Fit Analysis</h3>
+                <div className="flex items-center mb-3">
+                  <div className="text-3xl font-bold text-navy-800 mr-3">{advisoryData.career_fit_score}%</div>
+                  <Progress value={advisoryData.career_fit_score} className="flex-1 h-2" />
+                </div>
+                <p className="text-navy-600 mb-4">Your healthcare background aligns excellently with identified career paths</p>
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-navy-700">What you should do next:</p>
+                  {advisoryData.next_actions.map((action, idx) => (
+                    <div key={idx} className="flex items-start text-sm text-navy-600">
+                      <div className="w-1.5 h-1.5 bg-autumn-500 rounded-full mr-2 mt-2 flex-shrink-0"></div>
+                      {action}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white shadow-xl border-0 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 animate-fade-in">
+              <CardContent className="p-6">
+                <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-purple-700 rounded-xl flex items-center justify-center mb-4">
+                  <Brain className="w-6 h-6 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-navy-900 mb-2">Learning Priorities</h3>
+                <div className="space-y-3">
+                  {advisoryData.learning_priorities.slice(0, 3).map((priority, idx) => (
+                    <div key={idx} className="border border-navy-100 rounded-lg p-3">
+                      <div className="flex justify-between items-start mb-1">
+                        <h4 className="font-medium text-sm text-navy-800">{priority.title}</h4>
+                        <Badge variant={priority.priority === 'High' ? 'default' : 'secondary'} className="text-xs">
+                          {priority.priority}
+                        </Badge>
                       </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                      <p className="text-xs text-navy-500">{priority.timeframe}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white shadow-xl border-0 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 animate-fade-in">
+              <CardContent className="p-6">
+                <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-green-700 rounded-xl flex items-center justify-center mb-4">
+                  <Rocket className="w-6 h-6 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-navy-900 mb-2">Growth Strategy</h3>
+                <div className="space-y-3">
+                  {advisoryData.path_strategy.slice(0, 3).map((strategy, idx) => (
+                    <div key={idx} className="border border-navy-100 rounded-lg p-3">
+                      <div className="flex justify-between items-start mb-1">
+                        <h4 className="font-medium text-sm text-navy-800">{strategy.title}</h4>
+                        <Badge variant={strategy.priority === 'High' ? 'default' : 'secondary'} className="text-xs">
+                          {strategy.priority}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-navy-500">{strategy.timeframe}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
           {/* Detailed Recommendations */}
           <div className="space-y-8">
-            {recommendations.map((section, sectionIndex) => (
-              <Card key={sectionIndex} className="bg-white shadow-xl border-0 animate-fade-in" style={{
-                animationDelay: `${sectionIndex * 0.2}s`
-              }}>
-                <CardHeader>
-                  <CardTitle className="text-navy-900 flex items-center text-2xl">
-                    {section.category}
-                  </CardTitle>
-                  <div className="flex items-center space-x-2">
-                    <Badge className={`${section.priority === 'High' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                      {section.priority} Priority
-                    </Badge>
-                    <Badge variant="outline" className="border-navy-300 text-navy-600">
-                      {section.timeline}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-6">
-                    {section.items.map((item, itemIndex) => (
-                      <div key={itemIndex} className="border border-navy-100 rounded-xl p-6 hover:bg-navy-50 transition-colors">
-                        <h4 className="text-lg font-semibold text-navy-900 mb-2">{item.title}</h4>
-                        <p className="text-navy-600 mb-3">{item.description}</p>
-                        
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                          <div className="flex items-start">
-                            <Lightbulb className="w-4 h-4 text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
-                            <div>
-                              <span className="text-blue-700 font-medium text-sm">Next Action: </span>
-                              <span className="text-navy-700 text-sm">{item.action}</span>
-                            </div>
+            <Card className="bg-white shadow-xl border-0 animate-fade-in">
+              <CardHeader>
+                <CardTitle className="text-navy-900 flex items-center text-2xl">
+                  📚 Learning Priorities
+                </CardTitle>
+                <div className="flex items-center space-x-2">
+                  <Badge className="bg-red-100 text-red-700">High Priority</Badge>
+                  <Badge variant="outline" className="border-navy-300 text-navy-600">Next 3-6 months</Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  {advisoryData.learning_priorities.map((item, itemIndex) => (
+                    <div key={itemIndex} className="border border-navy-100 rounded-xl p-6 hover:bg-navy-50 transition-colors">
+                      <h4 className="text-lg font-semibold text-navy-900 mb-2">{item.title}</h4>
+                      
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div className="flex items-start">
+                          <Lightbulb className="w-4 h-4 text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <span className="text-blue-700 font-medium text-sm">Next Action: </span>
+                            <span className="text-navy-700 text-sm">{item.next_action}</span>
                           </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white shadow-xl border-0 animate-fade-in">
+              <CardHeader>
+                <CardTitle className="text-navy-900 flex items-center text-2xl">
+                  🎯 Career Path Strategy
+                </CardTitle>
+                <div className="flex items-center space-x-2">
+                  <Badge className="bg-yellow-100 text-yellow-700">Medium Priority</Badge>
+                  <Badge variant="outline" className="border-navy-300 text-navy-600">6-18 months</Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  {advisoryData.path_strategy.map((item, itemIndex) => (
+                    <div key={itemIndex} className="border border-navy-100 rounded-xl p-6 hover:bg-navy-50 transition-colors">
+                      <h4 className="text-lg font-semibold text-navy-900 mb-2">{item.title}</h4>
+                      
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <div className="flex items-start">
+                          <Target className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <span className="text-green-700 font-medium text-sm">Strategic Action: </span>
+                            <span className="text-navy-700 text-sm">{item.next_action}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
           {/* Next Steps CTA */}
