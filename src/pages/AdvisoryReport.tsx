@@ -1,37 +1,47 @@
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { useState, useEffect } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { ArrowLeft, FileText, TrendingUp, Target, Award, Book, Globe, Lightbulb, Download, BarChart3, Brain, Rocket } from "lucide-react";
+import {
+  ArrowLeft,
+  FileText,
+  TrendingUp,
+  Target,
+  Award,
+  Book,
+  Globe,
+  Lightbulb,
+  Download,
+  BarChart3,
+  Brain,
+  Rocket,
+  Clock,
+  AlertCircle,
+} from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useStudentAuth } from "@/contexts/StudentAuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from '@/integrations/supabase/client';
+import {
+  getCachedAnalysisResults,
+  analyzeStudentProfile,
+  AdvisoryReport as AdvisoryReportType,
+} from "@/services/studentAnalysisService";
 import ConsultationModal from "@/components/ConsultationModal";
-
-interface AdvisoryData {
-  career_fit_score: number;
-  next_actions: string[];
-  learning_priorities: Array<{
-    title: string;
-    priority: string;
-    timeframe: string;
-    next_action: string;
-  }>;
-  path_strategy: Array<{
-    title: string;
-    priority: string;
-    timeframe: string;
-    next_action: string;
-  }>;
-}
 
 const AdvisoryReport = () => {
   const navigate = useNavigate();
   const { student } = useStudentAuth();
   const { toast } = useToast();
-  const [advisoryData, setAdvisoryData] = useState<AdvisoryData | null>(null);
+  const [advisoryData, setAdvisoryData] = useState<AdvisoryReportType | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [showConsultationModal, setShowConsultationModal] = useState(false);
 
@@ -43,26 +53,35 @@ const AdvisoryReport = () => {
 
   const loadAdvisoryReport = async () => {
     try {
-      console.log('Loading advisory report for student:', student.id);
-      
-      // Call the advisory report endpoint
-      const { data, error } = await supabase.functions.invoke('advisoryReport', {
-        body: { profile_id: student.id }
-      });
+      console.log("Loading advisory report for student:", student.id);
 
-      if (error) {
-        console.error('Advisory report error:', error);
-        throw error;
+      // Try to get cached analysis results first
+      const cachedResults = await getCachedAnalysisResults(student.id);
+      if (cachedResults?.advisory_report) {
+        console.log("Using cached advisory report");
+        setAdvisoryData(cachedResults.advisory_report);
+        setLoading(false);
+        return;
       }
 
-      console.log('Advisory report response:', data);
-      setAdvisoryData(data);
-      
+      // Generate new analysis if no cached data
+      console.log("Generating new advisory report...");
+      const analysisResult = await analyzeStudentProfile(student.id);
+
+      if (analysisResult.advisory_report) {
+        setAdvisoryData(analysisResult.advisory_report);
+        toast({
+          title: "Advisory Report Generated! 📊",
+          description: "Your personalized career roadmap is ready.",
+        });
+      } else {
+        throw new Error("No advisory report generated");
+      }
     } catch (error) {
-      console.error('Failed to load advisory report:', error);
+      console.error("Failed to load advisory report:", error);
       toast({
-        title: "Error",
-        description: "Advisory Report not available. Please try again later.",
+        title: "Error Loading Report",
+        description: `Failed to load your advisory report: ${error.message}. Please try again.`,
         variant: "destructive",
       });
     } finally {
@@ -70,37 +89,110 @@ const AdvisoryReport = () => {
     }
   };
 
+  const handleDownloadReport = () => {
+    if (!advisoryData) return;
+
+    // Create a simple text version of the report for download
+    const reportContent = `
+ZANE AI CAREER ADVISORY REPORT
+Generated for: ${student?.full_name}
+Date: ${new Date().toLocaleDateString()}
+
+=== CAREER FIT ANALYSIS ===
+Overall Score: ${advisoryData.career_fit.score}%
+
+Next Actions:
+${advisoryData.career_fit.next_actions.map((action, index) => `${index + 1}. ${action}`).join("\n")}
+
+=== LEARNING PRIORITIES ===
+${advisoryData.learning_priorities
+  .map(
+    (priority, index) => `
+${index + 1}. ${priority.title}
+   Priority: ${priority.priority}
+   Timeframe: ${priority.timeframe}
+   Next Action: ${priority.next_action}
+`,
+  )
+  .join("\n")}
+
+=== PATH STRATEGY ===
+${advisoryData.path_strategy
+  .map(
+    (strategy, index) => `
+${index + 1}. ${strategy.title}
+   Priority: ${strategy.priority}
+   Timeframe: ${strategy.timeframe}
+   Next Action: ${strategy.next_action}
+`,
+  )
+  .join("\n")}
+
+---
+Generated by Zane AI - ZaneProEd Career Intelligence Platform
+    `.trim();
+
+    const blob = new Blob([reportContent], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `zane-advisory-report-${student?.username || "student"}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "Report Downloaded",
+      description: "Your advisory report has been saved to your device.",
+    });
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
-        <Card className="bg-white/90 backdrop-blur-sm shadow-2xl border-0 max-w-lg w-full mx-4 animate-scale-in">
-          <CardContent className="p-8 text-center">
-            <div className="mb-6">
-              <div className="w-20 h-20 mx-auto mb-4 relative">
-                <div className="w-20 h-20 border-4 border-navy-200 rounded-full"></div>
-                <div className="w-20 h-20 border-4 border-navy-600 rounded-full absolute top-0 left-0 animate-spin border-t-transparent"></div>
-              </div>
-              <div className="w-12 h-12 bg-gradient-to-r from-navy-600 to-navy-800 rounded-xl flex items-center justify-center mx-auto mb-4">
-                <span className="text-white font-bold text-lg">Z</span>
-              </div>
-              <h2 className="text-2xl font-bold text-navy-900 mb-2">Generating your advisory report...</h2>
-              <p className="text-navy-600">Creating personalized career insights just for you</p>
+      <div className="container mx-auto px-4 py-8">
+        <div className="text-center space-y-6">
+          <div className="relative">
+            <Brain className="w-16 h-16 animate-pulse text-navy-600 mx-auto mb-4" />
+            <FileText className="w-8 h-8 text-autumn-500 absolute top-0 right-1/2 transform translate-x-8 animate-bounce" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold text-navy-800 mb-2">
+              Generating Advisory Report
+            </h2>
+            <p className="text-lg text-slate-600 mb-4">
+              Creating your personalized career roadmap...
+            </p>
+            <div className="max-w-md mx-auto">
+              <Progress value={85} className="h-3 bg-slate-100" />
+              <p className="text-sm text-slate-500 mt-2">
+                This may take a few moments
+              </p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (!advisoryData) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
-        <Card className="bg-white shadow-xl border-0 max-w-lg w-full mx-4">
-          <CardContent className="p-8 text-center">
-            <h2 className="text-2xl font-bold text-navy-900 mb-4">Advisory Report Unavailable</h2>
-            <p className="text-navy-600 mb-6">Please complete your profile intake first to generate your personalized advisory report.</p>
-            <Button onClick={() => navigate('/intake')} className="bg-gradient-to-r from-navy-600 to-autumn-500 hover:from-navy-700 hover:to-autumn-600 text-white">
-              Complete Profile
+      <div className="container mx-auto px-4 py-8">
+        <Card>
+          <CardContent className="text-center py-8">
+            <AlertCircle className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-slate-600 mb-2">
+              No Advisory Report Available
+            </h3>
+            <p className="text-muted-foreground mb-4">
+              Please complete your profile analysis first to generate an
+              advisory report.
+            </p>
+            <Button
+              onClick={() => navigate("/analysis")}
+              className="bg-gradient-to-r from-navy-600 to-autumn-500 text-white"
+            >
+              Go to Analysis
             </Button>
           </CardContent>
         </Card>
@@ -108,232 +200,248 @@ const AdvisoryReport = () => {
     );
   }
 
+  const getPriorityColor = (priority: string) => {
+    switch (priority.toLowerCase()) {
+      case "high":
+        return "bg-red-100 text-red-800 border-red-300";
+      case "medium":
+        return "bg-yellow-100 text-yellow-800 border-yellow-300";
+      case "low":
+        return "bg-green-100 text-green-800 border-green-300";
+      default:
+        return "bg-gray-100 text-gray-800 border-gray-300";
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
       {/* Header */}
-      <header className="border-b border-navy-100 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex justify-between items-center">
-            <Link to="/analysis" className="flex items-center space-x-2 text-navy-600 hover:text-navy-800 transition-colors">
-              <ArrowLeft className="w-5 h-5" />
-              <span>Back to Analysis</span>
-            </Link>
-            <div className="text-center">
-              <p className="text-sm text-navy-500">Your Smart Career Assistant — Powered by ZaneProEd</p>
+      <header className="border-b border-slate-200 bg-white/80 backdrop-blur-sm">
+        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+          <Link
+            to="/analysis"
+            className="flex items-center space-x-2 text-navy-600 hover:text-navy-700 transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            <span>Back to Analysis</span>
+          </Link>
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 bg-gradient-to-r from-navy-600 to-autumn-500 rounded-lg flex items-center justify-center">
+              <Brain className="w-5 h-5 text-white" />
             </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-gradient-to-r from-navy-600 to-navy-800 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">Z</span>
-              </div>
-              <span className="text-navy-800 font-bold text-xl">Zane AI</span>
+            <div>
+              <span className="text-navy-700 font-bold text-lg">Zane AI</span>
+              <p className="text-slate-500 text-xs">by ZaneProEd</p>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-4 py-8">
-        <div className="max-w-6xl mx-auto">
-          {/* Header Section */}
-          <div className="text-center mb-12 animate-fade-in">
-            <div className="inline-flex items-center px-6 py-3 bg-green-100 text-green-700 rounded-full text-sm font-medium mb-6">
-              <FileText className="w-4 h-4 mr-2" />
-              Professional Career Advisory Report
-            </div>
-            
-            <h1 className="text-4xl font-bold text-navy-900 mb-4">
-              Your Personalized Career Insights
-            </h1>
-            <p className="text-xl text-navy-600 mb-8 max-w-2xl mx-auto">
-              Comprehensive analysis and recommendations to accelerate your healthcare career journey
-            </p>
-
-            <Button className="bg-gradient-to-r from-autumn-500 to-autumn-600 hover:from-autumn-600 hover:to-autumn-700 text-white shadow-lg">
-              <Download className="w-5 h-5 mr-2" />
-              Download Full Report (PDF)
+      <div className="container mx-auto px-4 py-8 space-y-8">
+        {/* Report Header */}
+        <div className="text-center space-y-4">
+          <div className="inline-flex items-center px-6 py-3 bg-navy-100 text-navy-700 rounded-full text-sm font-medium">
+            <FileText className="w-5 h-5 mr-2" />
+            Career Advisory Report
+          </div>
+          <h1 className="text-3xl font-bold text-navy-800">
+            Your Personalized Career Roadmap
+          </h1>
+          <p className="text-slate-600 max-w-2xl mx-auto">
+            Based on comprehensive analysis of your profile, here's your
+            detailed action plan for career success.
+          </p>
+          <div className="flex justify-center space-x-3">
+            <Button
+              onClick={handleDownloadReport}
+              variant="outline"
+              className="bg-white"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Download Report
+            </Button>
+            <Button
+              onClick={() => setShowConsultationModal(true)}
+              className="bg-gradient-to-r from-navy-600 to-autumn-500 hover:from-navy-700 hover:to-autumn-600 text-white"
+            >
+              <Globe className="mr-2 h-4 w-4" />
+              Book Consultation
             </Button>
           </div>
-
-          {/* Key Insights Dashboard */}
-          <div className="grid md:grid-cols-3 gap-8 mb-12">
-            <Card className="bg-white shadow-xl border-0 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 animate-fade-in">
-              <CardContent className="p-6">
-                <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-700 rounded-xl flex items-center justify-center mb-4">
-                  <BarChart3 className="w-6 h-6 text-white" />
-                </div>
-                <h3 className="text-xl font-bold text-navy-900 mb-2">Career Fit Analysis</h3>
-                <div className="flex items-center mb-3">
-                  <div className="text-3xl font-bold text-navy-800 mr-3">{advisoryData.career_fit_score}%</div>
-                  <Progress value={advisoryData.career_fit_score} className="flex-1 h-2" />
-                </div>
-                <p className="text-navy-600 mb-4">Your healthcare background aligns excellently with identified career paths</p>
-                <div className="space-y-2">
-                  <p className="text-sm font-semibold text-navy-700">What you should do next:</p>
-                  {advisoryData.next_actions.map((action, idx) => (
-                    <div key={idx} className="flex items-start text-sm text-navy-600">
-                      <div className="w-1.5 h-1.5 bg-autumn-500 rounded-full mr-2 mt-2 flex-shrink-0"></div>
-                      {action}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white shadow-xl border-0 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 animate-fade-in">
-              <CardContent className="p-6">
-                <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-purple-700 rounded-xl flex items-center justify-center mb-4">
-                  <Brain className="w-6 h-6 text-white" />
-                </div>
-                <h3 className="text-xl font-bold text-navy-900 mb-2">Learning Priorities</h3>
-                <div className="space-y-3">
-                  {advisoryData.learning_priorities.slice(0, 3).map((priority, idx) => (
-                    <div key={idx} className="border border-navy-100 rounded-lg p-3">
-                      <div className="flex justify-between items-start mb-1">
-                        <h4 className="font-medium text-sm text-navy-800">{priority.title}</h4>
-                        <Badge variant={priority.priority === 'High' ? 'default' : 'secondary'} className="text-xs">
-                          {priority.priority}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-navy-500">{priority.timeframe}</p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white shadow-xl border-0 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 animate-fade-in">
-              <CardContent className="p-6">
-                <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-green-700 rounded-xl flex items-center justify-center mb-4">
-                  <Rocket className="w-6 h-6 text-white" />
-                </div>
-                <h3 className="text-xl font-bold text-navy-900 mb-2">Growth Strategy</h3>
-                <div className="space-y-3">
-                  {advisoryData.path_strategy.slice(0, 3).map((strategy, idx) => (
-                    <div key={idx} className="border border-navy-100 rounded-lg p-3">
-                      <div className="flex justify-between items-start mb-1">
-                        <h4 className="font-medium text-sm text-navy-800">{strategy.title}</h4>
-                        <Badge variant={strategy.priority === 'High' ? 'default' : 'secondary'} className="text-xs">
-                          {strategy.priority}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-navy-500">{strategy.timeframe}</p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Detailed Recommendations */}
-          <div className="space-y-8">
-            <Card className="bg-white shadow-xl border-0 animate-fade-in">
-              <CardHeader>
-                <CardTitle className="text-navy-900 flex items-center text-2xl">
-                  📚 Learning Priorities
-                </CardTitle>
-                <div className="flex items-center space-x-2">
-                  <Badge className="bg-red-100 text-red-700">High Priority</Badge>
-                  <Badge variant="outline" className="border-navy-300 text-navy-600">Next 3-6 months</Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  {advisoryData.learning_priorities.map((item, itemIndex) => (
-                    <div key={itemIndex} className="border border-navy-100 rounded-xl p-6 hover:bg-navy-50 transition-colors">
-                      <h4 className="text-lg font-semibold text-navy-900 mb-2">{item.title}</h4>
-                      
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <div className="flex items-start">
-                          <Lightbulb className="w-4 h-4 text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
-                          <div>
-                            <span className="text-blue-700 font-medium text-sm">Next Action: </span>
-                            <span className="text-navy-700 text-sm">{item.next_action}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white shadow-xl border-0 animate-fade-in">
-              <CardHeader>
-                <CardTitle className="text-navy-900 flex items-center text-2xl">
-                  🎯 Career Path Strategy
-                </CardTitle>
-                <div className="flex items-center space-x-2">
-                  <Badge className="bg-yellow-100 text-yellow-700">Medium Priority</Badge>
-                  <Badge variant="outline" className="border-navy-300 text-navy-600">6-18 months</Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  {advisoryData.path_strategy.map((item, itemIndex) => (
-                    <div key={itemIndex} className="border border-navy-100 rounded-xl p-6 hover:bg-navy-50 transition-colors">
-                      <h4 className="text-lg font-semibold text-navy-900 mb-2">{item.title}</h4>
-                      
-                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                        <div className="flex items-start">
-                          <Target className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
-                          <div>
-                            <span className="text-green-700 font-medium text-sm">Strategic Action: </span>
-                            <span className="text-navy-700 text-sm">{item.next_action}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Next Steps CTA */}
-          <Card className="bg-gradient-to-r from-navy-600 to-navy-800 border-0 shadow-2xl mt-12 animate-fade-in">
-            <CardContent className="p-8 text-center">
-              <h2 className="text-3xl font-bold text-white mb-4">Ready to Launch Your Career?</h2>
-              <p className="text-navy-100 mb-6 text-lg max-w-2xl mx-auto">
-                Schedule a 1-on-1 consultation with our career advisors to create your personalized action plan
-              </p>
-              
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Button 
-                  size="lg" 
-                  className="bg-autumn-500 hover:bg-autumn-600 text-white px-8 shadow-lg"
-                  onClick={() => setShowConsultationModal(true)}
-                >
-                  Schedule Free Consultation
-                </Button>
-                
-                <Button 
-                  variant="outline" 
-                  size="lg" 
-                  className="border-white text-white hover:text-navy-800 px-8 bg-autumn-500 hover:bg-autumn-400"
-                  onClick={() => navigate('/courses')}
-                >
-                  Explore Learning Paths
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Footer */}
-          <div className="text-center mt-12 py-8 border-t border-navy-100">
-            <div className="flex items-center justify-center space-x-2 mb-2">
-              <div className="w-6 h-6 bg-gradient-to-r from-navy-600 to-navy-800 rounded flex items-center justify-center">
-                <span className="text-white font-bold text-xs">Z</span>
-              </div>
-              <span className="text-navy-600 font-semibold">ZaneProEd</span>
-            </div>
-            <p className="text-navy-500 text-sm">Smart Career Mapping for Healthcare Graduates</p>
-          </div>
         </div>
+
+        {/* Career Fit Score */}
+        <Card className="bg-gradient-to-r from-navy-50 to-autumn-50 border-navy-200">
+          <CardHeader>
+            <CardTitle className="flex items-center text-navy-800">
+              <BarChart3 className="mr-3 h-6 w-6" />
+              Career Fit Analysis
+            </CardTitle>
+            <CardDescription>
+              Overall assessment of your career readiness
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              <div>
+                <div className="flex justify-between items-center mb-3">
+                  <span className="text-lg font-semibold text-navy-700">
+                    Overall Career Readiness
+                  </span>
+                  <span className="text-2xl font-bold text-navy-800">
+                    {advisoryData.career_fit.score}%
+                  </span>
+                </div>
+                <Progress
+                  value={advisoryData.career_fit.score}
+                  className="h-4 bg-white"
+                />
+                <p className="text-sm text-slate-600 mt-2">
+                  {advisoryData.career_fit.score >= 80
+                    ? "Excellent! You're well-prepared for your target roles."
+                    : advisoryData.career_fit.score >= 60
+                      ? "Good foundation with room for strategic improvements."
+                      : "Focus on skill development to strengthen your profile."}
+                </p>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-navy-700 mb-3">
+                  Immediate Next Actions
+                </h4>
+                <div className="space-y-2">
+                  {advisoryData.career_fit.next_actions.map((action, index) => (
+                    <div key={index} className="flex items-start space-x-2">
+                      <Target className="w-4 h-4 mt-1 text-navy-600 flex-shrink-0" />
+                      <span className="text-sm text-slate-700">{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Learning Priorities */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Book className="mr-3 h-6 w-6 text-navy-600" />
+              Learning Priorities
+            </CardTitle>
+            <CardDescription>
+              Skills and knowledge areas to focus on for career advancement
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {advisoryData.learning_priorities.map((priority, index) => (
+                <div
+                  key={index}
+                  className="p-4 border border-slate-200 rounded-lg"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <h4 className="font-semibold text-slate-800">
+                      {priority.title}
+                    </h4>
+                    <div className="flex items-center space-x-2">
+                      <Badge
+                        variant="outline"
+                        className={getPriorityColor(priority.priority)}
+                      >
+                        {priority.priority} Priority
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className="bg-blue-100 text-blue-800 border-blue-300"
+                      >
+                        <Clock className="w-3 h-3 mr-1" />
+                        {priority.timeframe}
+                      </Badge>
+                    </div>
+                  </div>
+                  <p className="text-sm text-slate-600 mb-2">
+                    <strong>Next Action:</strong> {priority.next_action}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Path Strategy */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Rocket className="mr-3 h-6 w-6 text-navy-600" />
+              Career Path Strategy
+            </CardTitle>
+            <CardDescription>
+              Strategic roadmap for your career progression
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {advisoryData.path_strategy.map((strategy, index) => (
+                <div
+                  key={index}
+                  className="p-4 border border-slate-200 rounded-lg"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <h4 className="font-semibold text-slate-800">
+                      {strategy.title}
+                    </h4>
+                    <div className="flex items-center space-x-2">
+                      <Badge
+                        variant="outline"
+                        className={getPriorityColor(strategy.priority)}
+                      >
+                        {strategy.priority} Priority
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className="bg-purple-100 text-purple-800 border-purple-300"
+                      >
+                        <Clock className="w-3 h-3 mr-1" />
+                        {strategy.timeframe}
+                      </Badge>
+                    </div>
+                  </div>
+                  <p className="text-sm text-slate-600">
+                    <strong>Next Action:</strong> {strategy.next_action}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Call to Action */}
+        <Card className="bg-gradient-to-r from-green-50 to-blue-50 border-green-200">
+          <CardContent className="text-center py-8">
+            <Award className="w-12 h-12 text-green-600 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-green-800 mb-2">
+              Ready to Accelerate Your Career?
+            </h3>
+            <p className="text-green-700 mb-4">
+              Get personalized 1-on-1 guidance from our career experts to
+              fast-track your progress.
+            </p>
+            <Button
+              onClick={() => setShowConsultationModal(true)}
+              className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white"
+            >
+              <Globe className="mr-2 h-4 w-4" />
+              Schedule Expert Consultation
+            </Button>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Consultation Modal */}
-      <ConsultationModal 
-        isOpen={showConsultationModal} 
-        onClose={() => setShowConsultationModal(false)} 
+      <ConsultationModal
+        isOpen={showConsultationModal}
+        onClose={() => setShowConsultationModal(false)}
       />
     </div>
   );
