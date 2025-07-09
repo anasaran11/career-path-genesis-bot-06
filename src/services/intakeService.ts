@@ -1,5 +1,4 @@
-
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from "@/integrations/supabase/client";
 
 export interface IntakeFormData {
   // Personal Info
@@ -7,7 +6,7 @@ export interface IntakeFormData {
   email: string;
   phone: string;
   location: string;
-  
+
   // Education Background
   ugDegree: string;
   ugSpecialization: string;
@@ -15,14 +14,14 @@ export interface IntakeFormData {
   pgDegree: string;
   pgSpecialization: string;
   pgYear: string;
-  
+
   // Skills & Experience
   technicalSkills: string;
   softSkills: string;
   internships: string;
   projects: string;
   certifications: string;
-  
+
   // Career Goals
   preferredIndustry: string;
   careerGoals: string;
@@ -31,203 +30,197 @@ export interface IntakeFormData {
   workStyle: string;
 }
 
-export const submitIntakeData = async (formData: IntakeFormData, studentId: string) => {
+export const submitIntakeData = async (
+  formData: IntakeFormData,
+  studentId: string,
+) => {
   try {
-    console.log('Starting intake data submission for student:', studentId);
-    
-    // Create a UUID from the student ID for profiles table
-    // Since we're using custom auth, we'll create profiles using the student ID
+    console.log("Starting intake data submission for student:", studentId);
+
+    // Create profile using service function that bypasses RLS
     const profileData = {
-      user_id: studentId,
       name: formData.fullName,
       email: formData.email,
       mobile: formData.phone,
       city: formData.location,
-      updated_at: new Date().toISOString()
     };
 
-    // Insert or update profile
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .upsert(profileData, { onConflict: 'user_id' })
-      .select()
-      .single();
+    const { data: profileResult, error: profileError } = await supabase.rpc(
+      "create_or_update_student_profile",
+      {
+        student_uuid: studentId,
+        profile_data: profileData,
+      },
+    );
 
     if (profileError) {
-      console.error('Profile error:', profileError);
+      console.error("Profile RPC error:", profileError);
       throw new Error(`Profile error: ${profileError.message}`);
     }
 
-    console.log('Profile handled successfully:', profile?.id);
+    if (profileResult.error) {
+      console.error("Profile error:", profileResult.error);
+      throw new Error(`Profile error: ${profileResult.error}`);
+    }
 
-    // Insert education data
+    const profileId = profileResult.profile_id;
+    console.log("Profile handled successfully:", profileId);
+
+    // Insert education data using service function
     const educationEntries = [];
-    
+
     if (formData.ugDegree) {
       educationEntries.push({
-        profile_id: profile.id,
         degree: formData.ugDegree,
         institution: formData.ugSpecialization,
-        end_year: formData.ugYear ? parseInt(formData.ugYear) : null
+        end_year: formData.ugYear || "",
       });
     }
-    
+
     if (formData.pgDegree) {
       educationEntries.push({
-        profile_id: profile.id,
         degree: formData.pgDegree,
         institution: formData.pgSpecialization,
-        end_year: formData.pgYear ? parseInt(formData.pgYear) : null
+        end_year: formData.pgYear || "",
       });
     }
 
     if (educationEntries.length > 0) {
-      // Delete existing education records for this profile
-      await supabase
-        .from('educations')
-        .delete()
-        .eq('profile_id', profile.id);
+      const { data: educationResult, error: educationError } =
+        await supabase.rpc("update_student_education", {
+          student_uuid: studentId,
+          education_data: educationEntries,
+        });
 
-      const { error: educationError } = await supabase
-        .from('educations')
-        .insert(educationEntries);
-      
-      if (educationError) {
-        console.error('Education insert error:', educationError);
+      if (educationError || educationResult?.error) {
+        console.error(
+          "Education update error:",
+          educationError || educationResult.error,
+        );
       } else {
-        console.log('Education data inserted successfully');
+        console.log("Education data updated successfully");
       }
     }
 
-    // Handle skills
+    // Handle skills using service function
     if (formData.technicalSkills || formData.softSkills) {
       const allSkills = [];
-      
+
       if (formData.technicalSkills) {
-        const techSkills = formData.technicalSkills.split(',').map(s => s.trim()).filter(s => s);
+        const techSkills = formData.technicalSkills
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s);
         allSkills.push(...techSkills);
       }
-      
+
       if (formData.softSkills) {
-        const softSkills = formData.softSkills.split(',').map(s => s.trim()).filter(s => s);
+        const softSkills = formData.softSkills
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s);
         allSkills.push(...softSkills);
       }
 
       if (allSkills.length > 0) {
-        // First, ensure all skills exist in the skills table
-        for (const skillName of allSkills) {
-          await supabase
-            .from('skills')
-            .upsert({ name: skillName }, { onConflict: 'name' });
-        }
+        const { data: skillsResult, error: skillsError } = await supabase.rpc(
+          "update_student_skills",
+          {
+            student_uuid: studentId,
+            skills_data: allSkills,
+          },
+        );
 
-        // Get skill IDs
-        const { data: existingSkills } = await supabase
-          .from('skills')
-          .select('*')
-          .in('name', allSkills);
-
-        if (existingSkills) {
-          // Delete existing profile skills
-          await supabase
-            .from('profile_skills')
-            .delete()
-            .eq('profile_id', profile.id);
-
-          // Insert new profile skills
-          const profileSkills = existingSkills.map(skill => ({
-            profile_id: profile.id,
-            skill_id: skill.id,
-            level: 50 // Default level
-          }));
-
-          const { error: profileSkillsError } = await supabase
-            .from('profile_skills')
-            .insert(profileSkills);
-          
-          if (profileSkillsError) {
-            console.error('Profile skills error:', profileSkillsError);
-          } else {
-            console.log('Skills linked to profile successfully');
-          }
-        }
-      }
-    }
-
-    // Insert experience data (internships)
-    if (formData.internships) {
-      // Delete existing experiences
-      await supabase
-        .from('experiences')
-        .delete()
-        .eq('profile_id', profile.id);
-
-      const { error: experienceError } = await supabase
-        .from('experiences')
-        .insert({
-          profile_id: profile.id,
-          title: 'Internship Experience',
-          description: formData.internships
-        });
-      
-      if (experienceError) {
-        console.error('Experience insert error:', experienceError);
-      }
-    }
-
-    // Insert certifications
-    if (formData.certifications) {
-      const certList = formData.certifications.split(',').map(c => c.trim()).filter(c => c);
-      
-      if (certList.length > 0) {
-        // Delete existing certifications
-        await supabase
-          .from('certifications')
-          .delete()
-          .eq('profile_id', profile.id);
-
-        const certEntries = certList.map(cert => ({
-          profile_id: profile.id,
-          name: cert,
-          verified: false // Unverified until manual review
-        }));
-
-        const { error: certError } = await supabase
-          .from('certifications')
-          .insert(certEntries);
-        
-        if (certError) {
-          console.error('Certifications insert error:', certError);
+        if (skillsError || skillsResult?.error) {
+          console.error(
+            "Skills update error:",
+            skillsError || skillsResult.error,
+          );
         } else {
-          console.log('Certifications inserted successfully');
+          console.log("Skills updated successfully");
         }
       }
     }
 
-    // Insert job preferences
+    // Insert experience data using service function
+    if (formData.internships) {
+      const experienceData = {
+        title: "Internship Experience",
+        description: formData.internships,
+      };
+
+      const { data: experienceResult, error: experienceError } =
+        await supabase.rpc("update_student_experiences", {
+          student_uuid: studentId,
+          experience_data: experienceData,
+        });
+
+      if (experienceError || experienceResult?.error) {
+        console.error(
+          "Experience update error:",
+          experienceError || experienceResult.error,
+        );
+      } else {
+        console.log("Experience updated successfully");
+      }
+    }
+
+    // Insert certifications using service function
+    if (formData.certifications) {
+      const certList = formData.certifications
+        .split(",")
+        .map((c) => c.trim())
+        .filter((c) => c);
+
+      if (certList.length > 0) {
+        const { data: certResult, error: certError } = await supabase.rpc(
+          "update_student_certifications",
+          {
+            student_uuid: studentId,
+            certifications_data: certList,
+          },
+        );
+
+        if (certError || certResult?.error) {
+          console.error(
+            "Certifications update error:",
+            certError || certResult.error,
+          );
+        } else {
+          console.log("Certifications updated successfully");
+        }
+      }
+    }
+
+    // Insert job preferences using service function
     const jobPrefData = {
-      profile_id: profile.id,
-      desired_roles: formData.preferredIndustry ? [formData.preferredIndustry] : [],
-      preferred_cities: formData.jobLocations ? formData.jobLocations.split(',').map(c => c.trim()) : [],
+      desired_roles: formData.preferredIndustry,
+      preferred_cities: formData.jobLocations,
       salary_expectation: formData.salaryExpectation,
-      work_style: formData.workStyle
+      work_style: formData.workStyle,
     };
 
-    const { error: jobPrefError } = await supabase
-      .from('job_prefs')
-      .upsert(jobPrefData, { onConflict: 'profile_id' });
-    
-    if (jobPrefError) {
-      console.error('Job preferences error:', jobPrefError);
+    const { data: jobPrefResult, error: jobPrefError } = await supabase.rpc(
+      "update_student_job_prefs",
+      {
+        student_uuid: studentId,
+        job_prefs_data: jobPrefData,
+      },
+    );
+
+    if (jobPrefError || jobPrefResult?.error) {
+      console.error(
+        "Job preferences error:",
+        jobPrefError || jobPrefResult.error,
+      );
     } else {
-      console.log('Job preferences saved successfully');
+      console.log("Job preferences saved successfully");
     }
 
-    console.log('Intake data submission completed successfully');
-    return { success: true, profileId: profile.id };
-
+    console.log("Intake data submission completed successfully");
+    return { success: true, profileId: profileId };
   } catch (error) {
-    console.error('Error submitting intake data:', error);
+    console.error("Error submitting intake data:", error);
     return { success: false, error: error.message };
   }
 };
